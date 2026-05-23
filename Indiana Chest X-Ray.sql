@@ -1,145 +1,278 @@
---View the Dataset--
+/* ==========================================================
+   RADIOLOGY NLP PROJECT - CLEAN SQL PIPELINE (V1)
+   Methodology:
+   - Impression = primary diagnosis source
+   - Findings = fallback only if impression missing
+   - Problems = validation only
+   - Multi-label classification
+========================================================== */
+
+
+/* ==========================================
+1. View Dataset
+========================================== */
+
 SELECT TOP 10 *
 FROM reports;
 
---Count all records--
+
+
+/* ==========================================
+2. Dataset Size
+========================================== */
+
 SELECT COUNT(*) AS total_records
 FROM reports;
 
---Count all normal records--
-SELECT COUNT(*) AS normal_reports
-FROM reports
-WHERE LOWER(findings) LIKE '%normal%'
-   OR LOWER(impression) LIKE '%normal%';
-
---Count all abnormal records--
-SELECT COUNT(*) AS abnormal_reports
-FROM reports
-WHERE LOWER(findings) NOT LIKE '%normal%'
-   AND LOWER(impression) NOT LIKE '%normal%';
-
---Count specific conditions--
---Pneumonia--
-SELECT COUNT(*) AS pneumonia_cases
-FROM reports
-WHERE LOWER(findings) LIKE '%pneumonia%'
-   OR LOWER(impression) LIKE '%pneumonia%';
-
---Effusion--
-SELECT COUNT(*) AS effusion_cases
-FROM reports
-WHERE LOWER(findings) LIKE '%effusion%'
-   OR LOWER(impression) LIKE '%effusion%';
-
---Mass--
-SELECT COUNT(*) AS mass_cases
-FROM reports
-WHERE LOWER(findings) LIKE '%mass%'
-   OR LOWER(impression) LIKE '%mass%';
-
---Fracture--
-SELECT COUNT(*) AS fracture_cases
-FROM reports
-WHERE LOWER(findings) LIKE '%fracture%'
-   OR LOWER(impression) LIKE '%fracture%';
-
---Comparing pneumonia cases in findings and impressions vs problems--
-SELECT COUNT(*) AS pneumonia_cases
-FROM reports
-WHERE LOWER(findings) LIKE '%pneumonia%'
-	OR LOWER(impression) LIKE '%pneumonia%';
-
-SELECT COUNT(*) AS pneumonia_labels
-FROM reports
-WHERE LOWER(problems) LIKE '%pneumonia%';
 
 
---Correct for null values--
---Count of abnormal cases--
-SELECT COUNT(*) AS abnormal_reports
-FROM reports
-WHERE LOWER(ISNULL(findings,'')) NOT LIKE '%normal%'
-AND LOWER(ISNULL(impression,'')) NOT LIKE '%normal%';
+/* ==========================================
+3. Missing Value Audit
+(Important for methodology section)
+========================================== */
 
-
---Count of effusion cases--
-SELECT COUNT(*) AS true_effusion_cases
-FROM reports
-WHERE (
-      LOWER(ISNULL(findings,'')) LIKE '%effusion%'
-      OR LOWER(ISNULL(impression,'')) LIKE '%effusion%'
-)
-AND LOWER(ISNULL(findings,'')) NOT LIKE '%no pleural effusion%'
-AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pleural effusion%';
-
---Count of pneumonia cases--
-SELECT COUNT(*) AS true_pneumonia_cases
-FROM reports
-WHERE (
-    LOWER(ISNULL(findings,'')) LIKE '%pneumonia%'
-    OR LOWER(ISNULL(impression,'')) LIKE '%pneumonia%'
-)
-AND LOWER(ISNULL(findings,'')) NOT LIKE '%no focal air space opacity to suggest a pneumonia%'
-AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pneumonia%';
-
-
---Create Diagnosis category--
 SELECT
-    uid,
+    COUNT(*) AS total_records,
 
-    CASE
-        WHEN LOWER(ISNULL(impression,'')) LIKE '%pneumonia%'
-             AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pneumonia%'
-        THEN 'Pneumonia'
+    SUM(CASE WHEN findings IS NULL THEN 1 ELSE 0 END)
+        AS missing_findings,
 
-        WHEN LOWER(ISNULL(impression,'')) LIKE '%effusion%'
-             AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pleural effusion%'
-        THEN 'Pleural Effusion'
+    SUM(CASE WHEN impression IS NULL THEN 1 ELSE 0 END)
+        AS missing_impression,
 
-        WHEN LOWER(ISNULL(impression,'')) LIKE '%fracture%'
-        THEN 'Fracture'
-
-        WHEN LOWER(ISNULL(impression,'')) LIKE '%mass%'
-        THEN 'Mass'
-
-        WHEN LOWER(ISNULL(problems,'')) LIKE '%normal%'
-        THEN 'Normal'
-
-        ELSE 'Other'
-    END AS diagnosis_category
+    SUM(CASE WHEN problems IS NULL THEN 1 ELSE 0 END)
+        AS missing_problems
 
 FROM reports;
 
 
---Count of each diagnosis category--
+
+/* ==========================================
+4. Create Unified Clinical Text
+Impression first.
+If missing, use findings.
+========================================== */
+
 SELECT
-    diagnosis_category,
-    COUNT(*) AS total
-FROM
-(
-    SELECT
+    uid,
+
+    COALESCE(impression, findings, '') AS clinical_text
+
+FROM reports;
+
+
+
+/* ==========================================
+5. Count Normal Studies
+========================================== */
+
+SELECT COUNT(*) AS normal_reports
+FROM reports
+WHERE LOWER(COALESCE(impression, findings, ''))
+LIKE '%normal%';
+
+
+
+/* ==========================================
+6. Count Abnormal Studies
+========================================== */
+
+SELECT COUNT(*) AS abnormal_reports
+FROM reports
+WHERE LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%normal%';
+
+
+
+/* ==========================================
+7. Disease Counts
+NEGATION-AWARE
+========================================== */
+
+
+-- Pneumonia
+SELECT COUNT(*) AS pneumonia_cases
+FROM reports
+WHERE
+LOWER(COALESCE(impression, findings, ''))
+LIKE '%pneumonia%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%no%pneumonia%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%without%pneumonia%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%suggest a pneumonia%';
+
+
+
+-- Pleural Effusion
+SELECT COUNT(*) AS effusion_cases
+FROM reports
+WHERE
+LOWER(COALESCE(impression, findings, ''))
+LIKE '%effusion%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%no%effusion%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%without%effusion%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%effusion identified%';
+
+
+
+-- Fracture
+SELECT COUNT(*) AS fracture_cases
+FROM reports
+WHERE
+LOWER(COALESCE(impression, findings, ''))
+LIKE '%fracture%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%no%fracture%';
+
+
+
+-- Mass
+SELECT COUNT(*) AS mass_cases
+FROM reports
+WHERE
+LOWER(COALESCE(impression, findings, ''))
+LIKE '%mass%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%no%mass%';
+
+
+
+/* ==========================================
+8. Compare Pneumonia Detection
+Model vs Label
+========================================== */
+
+SELECT COUNT(*) AS predicted_pneumonia
+FROM reports
+WHERE
+LOWER(COALESCE(impression, findings, ''))
+LIKE '%pneumonia%'
+AND LOWER(COALESCE(impression, findings, ''))
+NOT LIKE '%no%pneumonia%';
+
+
+SELECT COUNT(*) AS pneumonia_labels
+FROM reports
+WHERE LOWER(COALESCE(problems,''))
+LIKE '%pneumonia%';
+
+
+
+/* ==========================================
+9. Multi-label Clinical Classification
+THIS BECOMES POWER BI TABLE
+========================================== */
+
+SELECT
+
+    uid,
+
+    COALESCE(impression, findings, '')
+    AS clinical_text,
+
+    CASE
+        WHEN
+        LOWER(COALESCE(impression, findings, ''))
+        LIKE '%pneumonia%'
+        AND LOWER(COALESCE(impression, findings, ''))
+        NOT LIKE '%no%pneumonia%'
+        THEN 1
+        ELSE 0
+    END AS pneumonia,
+
+
+    CASE
+        WHEN
+        LOWER(COALESCE(impression, findings, ''))
+        LIKE '%effusion%'
+        AND LOWER(COALESCE(impression, findings, ''))
+        NOT LIKE '%no%effusion%'
+        THEN 1
+        ELSE 0
+    END AS pleural_effusion,
+
+
+    CASE
+        WHEN
+        LOWER(COALESCE(impression, findings, ''))
+        LIKE '%fracture%'
+        AND LOWER(COALESCE(impression, findings, ''))
+        NOT LIKE '%no%fracture%'
+        THEN 1
+        ELSE 0
+    END AS fracture,
+
+
+    CASE
+        WHEN
+        LOWER(COALESCE(impression, findings, ''))
+        LIKE '%mass%'
+        AND LOWER(COALESCE(impression, findings, ''))
+        NOT LIKE '%no%mass%'
+        THEN 1
+        ELSE 0
+    END AS mass,
+
+
+    CASE
+        WHEN LOWER(COALESCE(problems,''))
+        LIKE '%normal%'
+        THEN 1
+        ELSE 0
+    END AS normal_label
+
+FROM reports;
+
+
+
+/* ==========================================
+10. Disease Distribution
+========================================== */
+
+SELECT
+    SUM(
         CASE
-            WHEN LOWER(ISNULL(impression,'')) LIKE '%pneumonia%'
-                 AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pneumonia%'
-            THEN 'Pneumonia'
+            WHEN LOWER(COALESCE(impression, findings,''))
+            LIKE '%pneumonia%'
+            AND LOWER(COALESCE(impression, findings,''))
+            NOT LIKE '%no%pneumonia%'
+            THEN 1 ELSE 0
+        END
+    ) AS pneumonia_total,
 
-            WHEN LOWER(ISNULL(impression,'')) LIKE '%effusion%'
-                 AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pleural effusion%'
-            THEN 'Pleural Effusion'
+    SUM(
+        CASE
+            WHEN LOWER(COALESCE(impression, findings,''))
+            LIKE '%effusion%'
+            AND LOWER(COALESCE(impression, findings,''))
+            NOT LIKE '%no%effusion%'
+            THEN 1 ELSE 0
+        END
+    ) AS effusion_total,
 
-            WHEN LOWER(ISNULL(impression,'')) LIKE '%fracture%'
-            THEN 'Fracture'
+    SUM(
+        CASE
+            WHEN LOWER(COALESCE(impression, findings,''))
+            LIKE '%fracture%'
+            AND LOWER(COALESCE(impression, findings,''))
+            NOT LIKE '%no%fracture%'
+            THEN 1 ELSE 0
+        END
+    ) AS fracture_total,
 
-            WHEN LOWER(ISNULL(impression,'')) LIKE '%mass%'
-            THEN 'Mass'
+    SUM(
+        CASE
+            WHEN LOWER(COALESCE(impression, findings,''))
+            LIKE '%mass%'
+            AND LOWER(COALESCE(impression, findings,''))
+            NOT LIKE '%no%mass%'
+            THEN 1 ELSE 0
+        END
+    ) AS mass_total
 
-            WHEN LOWER(ISNULL(problems,'')) LIKE '%normal%'
-            THEN 'Normal'
-
-            ELSE 'Other'
-        END AS diagnosis_category
-    FROM reports
-) classified_reports
-
-GROUP BY diagnosis_category
-ORDER BY total DESC;
+FROM reports;
