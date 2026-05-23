@@ -109,3 +109,37 @@ SELECT
     END AS diagnosis_category
 
 FROM reports;
+
+
+--Count of each diagnosis category--
+SELECT
+    diagnosis_category,
+    COUNT(*) AS total
+FROM
+(
+    SELECT
+        CASE
+            WHEN LOWER(ISNULL(impression,'')) LIKE '%pneumonia%'
+                 AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pneumonia%'
+            THEN 'Pneumonia'
+
+            WHEN LOWER(ISNULL(impression,'')) LIKE '%effusion%'
+                 AND LOWER(ISNULL(impression,'')) NOT LIKE '%no pleural effusion%'
+            THEN 'Pleural Effusion'
+
+            WHEN LOWER(ISNULL(impression,'')) LIKE '%fracture%'
+            THEN 'Fracture'
+
+            WHEN LOWER(ISNULL(impression,'')) LIKE '%mass%'
+            THEN 'Mass'
+
+            WHEN LOWER(ISNULL(problems,'')) LIKE '%normal%'
+            THEN 'Normal'
+
+            ELSE 'Other'
+        END AS diagnosis_category
+    FROM reports
+) classified_reports
+
+GROUP BY diagnosis_category
+ORDER BY total DESC;
